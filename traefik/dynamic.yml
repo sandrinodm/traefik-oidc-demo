@@ -1,0 +1,65 @@
+http:
+  routers:
+    request-inspector:
+      entryPoints:
+        - web
+      rule: PathPrefix(`/`)
+      service: express-inspector
+      middlewares:
+        - oidc-https-scheme
+        - oidc-auth
+        - response-security
+
+  services:
+    express-inspector:
+      loadBalancer:
+        servers:
+          - url: http://127.0.0.1:3000
+
+  middlewares:
+    oidc-https-scheme:
+      headers:
+        customRequestHeaders:
+          X-Forwarded-Proto: https
+
+    oidc-auth:
+      plugin:
+        traefik-oidc-auth:
+          LogLevel: "${OIDC_LOG_LEVEL}"
+          Secret: "${OIDC_SESSION_SECRET}"
+          Provider:
+            Url: "${OIDC_ISSUER}"
+            ClientId: "${OIDC_CLIENT_ID}"
+            ClientSecret: "${OIDC_CLIENT_SECRET}"
+            UsePkce: true
+            ValidateIssuer: true
+            ValidateAudience: true
+          Scopes:
+            - openid
+            - profile
+            - email
+          CallbackUri: "${OIDC_CALLBACK_URI}"
+          LogoutUri: /logout
+          PostLogoutRedirectUri: /
+          BypassAuthenticationRule: "Path(`/healthz`)"
+          SessionCookie:
+            Secure: {{ env "OIDC_COOKIE_SECURE" | default "true" }}
+            HttpOnly: true
+            SameSite: lax
+          Headers:
+            - Name: X-OIDC-Subject
+              Value: "{{`{{ .claims.sub }}`}}"
+            - Name: X-OIDC-Email
+              Value: "{{`{{ .claims.email }}`}}"
+            - Name: X-OIDC-Name
+              Value: "{{`{{ .claims.name }}`}}"
+            - Name: X-OIDC-Preferred-Username
+              Value: "{{`{{ .claims.preferred_username }}`}}"
+
+    response-security:
+      headers:
+        contentTypeNosniff: true
+        customResponseHeaders:
+          Cache-Control: no-store
+          Referrer-Policy: no-referrer
+        frameDeny: true

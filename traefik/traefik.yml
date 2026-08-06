@@ -1,0 +1,27 @@
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+entryPoints:
+  web:
+    address: ":80"
+    forwardedHeaders:
+      insecure: false
+
+providers:
+  file:
+    filename: /etc/traefik/dynamic.yml
+    watch: false
+
+experimental:
+  localPlugins:
+    traefik-oidc-auth:
+      moduleName: github.com/sevensolutions/traefik-oidc-auth
+
+api:
+  dashboard: false
+
+accessLog: {}
+
+log:
+  level: INFO
