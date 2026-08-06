@@ -40,7 +40,7 @@ Requirements: Docker with Docker Compose and an OIDC client from your identity p
    docker compose up --build
    ```
 
-4. Open the app through its HTTPS URL. After login, the page shows the exact headers and cookies received by Express. Use the **Logout** button to start the provider's end-session flow.
+4. Open the app through its HTTPS URL. After login, the page shows the exact headers and cookies received by Express. Use the **Logout** button to remove the app's local OIDC session. This does not end the identity-provider session, so signing in again may not require credentials.
 
 To stop it:
 
@@ -63,11 +63,11 @@ docker compose down
 
 When deploying with Aiven Apps, expose port `8080`. The image deliberately runs as a non-root user, which cannot bind privileged port `80` without additional runtime capabilities.
 
-The requested scopes are `openid`, `profile`, and `email`. The middleware forwards `sub`, `email`, `name`, and `preferred_username` as `X-OIDC-*` headers when the provider supplies those claims.
+The requested scopes are `openid`, `profile`, and `email`. The middleware forwards `sub`, `email`, `name`, and `preferred_username` as individual `X-OIDC-*` headers when the provider supplies those claims. It also forwards the complete claims map as `X-OIDC-Claims` and the raw ID token as `X-OIDC-ID-Token`. In plugin version `v0.21.0`, the claims-map header uses Go's map representation rather than JSON; applications that need a machine-readable complete claim set should decode and validate `X-OIDC-ID-Token` instead.
 
 ## Production cautions
 
-This is intentionally a request debugger: it displays authentication cookies and potentially sensitive headers. Keep it private, use temporary credentials, and never treat it as a production application.
+This is intentionally a request debugger: it displays authentication cookies, the complete OIDC claims map, and the raw ID token. Keep it private, use temporary credentials, and never treat it as a production application.
 
 For a production-like deployment, terminate TLS at Traefik or a trusted upstream proxy, use an `https://` callback, set `OIDC_COOKIE_SECURE=true`, and store client/session secrets using your platform's secret manager. Environment variables are convenient for a demo but can be visible through container-inspection tooling.
 

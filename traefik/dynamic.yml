@@ -9,6 +9,15 @@ http:
       middlewares:
         - response-security
 
+    local-logout:
+      entryPoints:
+        - web
+      rule: Path(`/logout`)
+      priority: 100
+      service: express-inspector
+      middlewares:
+        - response-security
+
     request-inspector:
       entryPoints:
         - web
@@ -63,6 +72,10 @@ http:
               Value: "{{`{{ .claims.name }}`}}"
             - Name: X-OIDC-Preferred-Username
               Value: "{{`{{ .claims.preferred_username }}`}}"
+            - Name: X-OIDC-Claims
+              Value: "{{`{{ .claims }}`}}"
+            - Name: X-OIDC-ID-Token
+              Value: "{{`{{ .idToken }}`}}"
 
     response-security:
       headers:
