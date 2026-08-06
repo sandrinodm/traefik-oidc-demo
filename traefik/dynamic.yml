@@ -1,5 +1,14 @@
 http:
   routers:
+    health:
+      entryPoints:
+        - web
+      rule: Path(`/healthz`)
+      priority: 100
+      service: express-inspector
+      middlewares:
+        - response-security
+
     request-inspector:
       entryPoints:
         - web
@@ -41,7 +50,6 @@ http:
           CallbackUri: "${OIDC_CALLBACK_URI}"
           LogoutUri: /logout
           PostLogoutRedirectUri: /
-          BypassAuthenticationRule: "Path(`/healthz`)"
           SessionCookie:
             Secure: {{ env "OIDC_COOKIE_SECURE" | default "true" }}
             HttpOnly: true
