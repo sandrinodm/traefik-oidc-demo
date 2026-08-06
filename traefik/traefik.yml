@@ -4,7 +4,7 @@ global:
 
 entryPoints:
   web:
-    address: ":80"
+    address: ":8080"
     forwardedHeaders:
       insecure: false
 

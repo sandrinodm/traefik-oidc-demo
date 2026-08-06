@@ -2,7 +2,7 @@
 
 This demo builds **one Docker image** and runs **one Compose service**. Inside that container:
 
-1. Traefik listens on port `80` and runs an OpenID Connect middleware.
+1. Traefik listens on unprivileged container port `8080` and runs an OpenID Connect middleware. Compose maps host port `80` to it by default.
 2. The middleware completes the OIDC authorization-code flow, validates the issuer and audience, and adds selected identity claims as `X-OIDC-*` headers.
 3. Traefik proxies authenticated requests to an Express app bound only to `127.0.0.1:3000`.
 4. Express renders every incoming request header and cookie in tables.
@@ -61,6 +61,8 @@ docker compose down
 | `OIDC_LOG_LEVEL` | no | `WARN` | Plugin log level |
 | `APP_PORT` | no | `80` | Host port mapped to Traefik |
 
+When deploying with Aiven Apps, expose port `8080`. The image deliberately runs as a non-root user, which cannot bind privileged port `80` without additional runtime capabilities.
+
 The requested scopes are `openid`, `profile`, and `email`. The middleware forwards `sub`, `email`, `name`, and `preferred_username` as `X-OIDC-*` headers when the provider supplies those claims.
 
 ## Production cautions
@@ -80,4 +82,4 @@ docker compose config
 docker compose build
 ```
 
-The container health check calls `http://127.0.0.1:80/healthz` through Traefik. That one route is deliberately exempt from OIDC and returns only `{"status":"ok"}`; every request-inspector page remains protected.
+The container health check calls `http://127.0.0.1:8080/healthz` through Traefik. That one route is deliberately exempt from OIDC and returns only `{"status":"ok"}`; every request-inspector page remains protected.

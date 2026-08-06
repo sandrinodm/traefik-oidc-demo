@@ -33,9 +33,9 @@ COPY --chown=app:app traefik/traefik.yml /etc/traefik/traefik.yml
 COPY --chown=app:app traefik/dynamic.yml /etc/traefik/dynamic.yml
 
 USER app
-EXPOSE 80
+EXPOSE 8080
 STOPSIGNAL SIGTERM
 HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=3 \
-  CMD ["node", "-e", "fetch('http://127.0.0.1:80/healthz').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+  CMD ["node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
 
 ENTRYPOINT ["node", "/app/app/start.js"]
