@@ -1,0 +1,17 @@
+displayName: OIDC Provider Selector
+type: middleware
+import: github.com/sandrinodm/traefik-oidc-provider-selector
+summary: Renders an OIDC provider chooser and manages the provider-routing cookie.
+testData:
+  cookieName: oidc_provider
+  cookieMaxAge: 28800
+  cookieSecure: false
+  templateFile: page.html
+  providers:
+    - id: provider-1
+      name: Google
+    - id: provider-2
+      name: Auth0
+  sessionCookiePrefixes:
+    - TraefikOidcAuth.Provider1.
+    - TraefikOidcAuth.Provider2.

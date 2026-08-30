@@ -1,21 +1,47 @@
 name: traefik-oidc-header-viewer
 
 services:
-  demo:
+  traefik:
     build:
-      context: .
+      context: ./traefik
       args:
         OIDC_PLUGIN_VERSION: v0.21.0
     ports:
       - "${APP_PORT:-80}:8080"
     environment:
-      OIDC_ISSUER: "${OIDC_ISSUER:-${REEF_ISSUER:-}}"
-      OIDC_CLIENT_ID: "${OIDC_CLIENT_ID:-${REEF_CLIENT_ID:-}}"
-      OIDC_CLIENT_SECRET: "${OIDC_CLIENT_SECRET:-${REEF_CLIENT_SECRET:-}}"
-      OIDC_SESSION_SECRET: "${OIDC_SESSION_SECRET}"
-      OIDC_CALLBACK_URI: "${OIDC_CALLBACK_URI:-/oauth2/callback}"
       OIDC_COOKIE_SECURE: "${OIDC_COOKIE_SECURE:-true}"
+      OIDC_FORCE_HTTPS: "${OIDC_FORCE_HTTPS:-true}"
       OIDC_LOG_LEVEL: "${OIDC_LOG_LEVEL:-WARN}"
+      OIDC_PROVIDER_1_CLIENT_ID: "${OIDC_PROVIDER_1_CLIENT_ID:-${OIDC_CLIENT_ID:-${REEF_CLIENT_ID:-}}}"
+      OIDC_PROVIDER_1_CLIENT_SECRET: "${OIDC_PROVIDER_1_CLIENT_SECRET:-${OIDC_CLIENT_SECRET:-${REEF_CLIENT_SECRET:-}}}"
+      OIDC_PROVIDER_1_ENABLED: "${OIDC_PROVIDER_1_ENABLED:-true}"
+      OIDC_PROVIDER_1_ISSUER: "${OIDC_PROVIDER_1_ISSUER:-${OIDC_ISSUER:-${REEF_ISSUER:-https://accounts.google.com}}}"
+      OIDC_PROVIDER_1_NAME: "${OIDC_PROVIDER_1_NAME:-Google}"
+      OIDC_PROVIDER_1_SESSION_SECRET: "${OIDC_PROVIDER_1_SESSION_SECRET:-${OIDC_SESSION_SECRET:-}}"
+      OIDC_PROVIDER_2_CLIENT_ID: "${OIDC_PROVIDER_2_CLIENT_ID:-}"
+      OIDC_PROVIDER_2_CLIENT_SECRET: "${OIDC_PROVIDER_2_CLIENT_SECRET:-}"
+      OIDC_PROVIDER_2_ENABLED: "${OIDC_PROVIDER_2_ENABLED:-true}"
+      OIDC_PROVIDER_2_ISSUER: "${OIDC_PROVIDER_2_ISSUER:-}"
+      OIDC_PROVIDER_2_NAME: "${OIDC_PROVIDER_2_NAME:-Auth0}"
+      OIDC_PROVIDER_2_SESSION_SECRET: "${OIDC_PROVIDER_2_SESSION_SECRET:-}"
+    depends_on:
+      app:
+        condition: service_healthy
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  app:
+    build:
+      context: ./app
+    expose:
+      - "3000"
     init: true
     read_only: true
     tmpfs:

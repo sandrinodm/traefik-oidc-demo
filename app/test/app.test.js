@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import test from "node:test";
-import { createApp, escapeHtml, parseCookies } from "../app/app.js";
+import { createApp, escapeHtml, parseCookies } from "../app.js";
 
 test("escapeHtml neutralizes values rendered into the inspector", () => {
   assert.equal(escapeHtml(`<script>alert("x")</script>`), "&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;");

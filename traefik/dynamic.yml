@@ -1,54 +1,164 @@
+{{ $provider1Enabled := eq (env "OIDC_PROVIDER_1_ENABLED") "true" }}
+{{ $provider2Enabled := eq (env "OIDC_PROVIDER_2_ENABLED") "true" }}
+{{ $forceHttps := eq (env "OIDC_FORCE_HTTPS") "true" }}
+
 http:
   routers:
-    health:
+    public:
       entryPoints:
         - web
-      rule: Path(`/healthz`)
-      priority: 100
-      service: express-inspector
+      rule: Path(`/healthz`) || Path(`/login`) || PathPrefix(`/login/`) || Path(`/logout`) || Path(`/signed-out`)
+      priority: 1000
+      service: selector-sink
       middlewares:
+{{ if $forceHttps }}
+        - force-https-scheme
+{{ end }}
+        - strip-client-identity
         - response-security
+        - provider-selector
 
-    local-logout:
+{{ if $provider1Enabled }}
+    oidc-provider-1-callback:
       entryPoints:
         - web
-      rule: Path(`/logout`)
-      priority: 100
+      rule: Path(`/oauth2/callback/provider-1`)
+      priority: 900
       service: express-inspector
       middlewares:
+{{ if $forceHttps }}
+        - force-https-scheme
+{{ end }}
+        - strip-client-identity
+        - oidc-provider-1
         - response-security
 
-    request-inspector:
+    oidc-provider-1:
+      entryPoints:
+        - web
+      rule: 'PathPrefix(`/`) && HeaderRegexp(`Cookie`, `(^|;\s*)oidc_provider=provider-1(;|$)`)'
+      priority: 200
+      service: express-inspector
+      middlewares:
+{{ if $forceHttps }}
+        - force-https-scheme
+{{ end }}
+        - strip-client-identity
+        - oidc-provider-1
+        - response-security
+{{ end }}
+
+{{ if $provider2Enabled }}
+    oidc-provider-2-callback:
+      entryPoints:
+        - web
+      rule: Path(`/oauth2/callback/provider-2`)
+      priority: 900
+      service: express-inspector
+      middlewares:
+{{ if $forceHttps }}
+        - force-https-scheme
+{{ end }}
+        - strip-client-identity
+        - oidc-provider-2
+        - response-security
+
+    oidc-provider-2:
+      entryPoints:
+        - web
+      rule: 'PathPrefix(`/`) && HeaderRegexp(`Cookie`, `(^|;\s*)oidc_provider=provider-2(;|$)`)'
+      priority: 200
+      service: express-inspector
+      middlewares:
+{{ if $forceHttps }}
+        - force-https-scheme
+{{ end }}
+        - strip-client-identity
+        - oidc-provider-2
+        - response-security
+{{ end }}
+
+    provider-chooser:
       entryPoints:
         - web
       rule: PathPrefix(`/`)
-      service: express-inspector
+      priority: 1
+      service: selector-sink
       middlewares:
-        - oidc-https-scheme
-        - oidc-auth
+{{ if $forceHttps }}
+        - force-https-scheme
+{{ end }}
+        - strip-client-identity
         - response-security
+        - provider-selector
 
   services:
+    # Selector routers must terminate inside the middleware. This unreachable
+    # backend makes any accidental fallthrough fail closed rather than exposing Express.
+    selector-sink:
+      loadBalancer:
+        servers:
+          - url: http://127.0.0.1:1
+
     express-inspector:
       loadBalancer:
         servers:
-          - url: http://127.0.0.1:3000
+          - url: http://app:3000
 
   middlewares:
-    oidc-https-scheme:
+{{ if $forceHttps }}
+    force-https-scheme:
       headers:
         customRequestHeaders:
           X-Forwarded-Proto: https
+{{ end }}
 
-    oidc-auth:
+    strip-client-identity:
+      headers:
+        customRequestHeaders:
+          X-OIDC-Authenticated: ""
+          X-OIDC-Claims: ""
+          X-OIDC-Email: ""
+          X-OIDC-ID-Token: ""
+          X-OIDC-Name: ""
+          X-OIDC-Preferred-Username: ""
+          X-OIDC-Provider: ""
+          X-OIDC-Subject: ""
+
+    provider-selector:
+      plugin:
+        oidc-provider-selector:
+          cookieMaxAge: 28800
+          cookieName: oidc_provider
+          cookieSecure: {{ env "OIDC_COOKIE_SECURE" | default "true" }}
+{{ if or $provider1Enabled $provider2Enabled }}
+          providers:
+{{ if $provider1Enabled }}
+            - id: provider-1
+              name: {{ env "OIDC_PROVIDER_1_NAME" | printf "%q" }}
+{{ end }}
+{{ if $provider2Enabled }}
+            - id: provider-2
+              name: {{ env "OIDC_PROVIDER_2_NAME" | printf "%q" }}
+{{ end }}
+{{ else }}
+          providers: []
+{{ end }}
+          sessionCookiePrefixes:
+            - TraefikOidcAuth.Provider1.
+            - TraefikOidcAuth.Provider2.
+          templateFile: /plugins-local/src/github.com/sandrinodm/traefik-oidc-provider-selector/page.html
+
+{{ if $provider1Enabled }}
+    oidc-provider-1:
       plugin:
         traefik-oidc-auth:
           LogLevel: "${OIDC_LOG_LEVEL}"
-          Secret: "${OIDC_SESSION_SECRET}"
+          Secret: "${OIDC_PROVIDER_1_SESSION_SECRET}"
           Provider:
-            Url: "${OIDC_ISSUER}"
-            ClientId: "${OIDC_CLIENT_ID}"
-            ClientSecret: "${OIDC_CLIENT_SECRET}"
+            Url: "${OIDC_PROVIDER_1_ISSUER}"
+            ClientId: "${OIDC_PROVIDER_1_CLIENT_ID}"
+            ClientSecret: "${OIDC_PROVIDER_1_CLIENT_SECRET}"
             UsePkce: true
             ValidateIssuer: true
             ValidateAudience: true
@@ -56,14 +166,18 @@ http:
             - openid
             - profile
             - email
-          CallbackUri: "${OIDC_CALLBACK_URI}"
-          LogoutUri: /logout
-          PostLogoutRedirectUri: /
+          CallbackUri: /oauth2/callback/provider-1
+          CookieNamePrefix: TraefikOidcAuth.Provider1
+          UnauthenticatedBehavior: Auto
           SessionCookie:
             Secure: {{ env "OIDC_COOKIE_SECURE" | default "true" }}
             HttpOnly: true
             SameSite: lax
           Headers:
+            - Name: X-OIDC-Authenticated
+              Value: "true"
+            - Name: X-OIDC-Provider
+              Value: {{ env "OIDC_PROVIDER_1_NAME" | printf "%q" }}
             - Name: X-OIDC-Subject
               Value: "{{`{{ .claims.sub }}`}}"
             - Name: X-OIDC-Email
@@ -76,11 +190,57 @@ http:
               Value: "{{`{{ .claims }}`}}"
             - Name: X-OIDC-ID-Token
               Value: "{{`{{ .idToken }}`}}"
+{{ end }}
+
+{{ if $provider2Enabled }}
+    oidc-provider-2:
+      plugin:
+        traefik-oidc-auth:
+          LogLevel: "${OIDC_LOG_LEVEL}"
+          Secret: "${OIDC_PROVIDER_2_SESSION_SECRET}"
+          Provider:
+            Url: "${OIDC_PROVIDER_2_ISSUER}"
+            ClientId: "${OIDC_PROVIDER_2_CLIENT_ID}"
+            ClientSecret: "${OIDC_PROVIDER_2_CLIENT_SECRET}"
+            UsePkce: true
+            ValidateIssuer: true
+            ValidateAudience: true
+          Scopes:
+            - openid
+            - profile
+            - email
+          CallbackUri: /oauth2/callback/provider-2
+          CookieNamePrefix: TraefikOidcAuth.Provider2
+          UnauthenticatedBehavior: Auto
+          SessionCookie:
+            Secure: {{ env "OIDC_COOKIE_SECURE" | default "true" }}
+            HttpOnly: true
+            SameSite: lax
+          Headers:
+            - Name: X-OIDC-Authenticated
+              Value: "true"
+            - Name: X-OIDC-Provider
+              Value: {{ env "OIDC_PROVIDER_2_NAME" | printf "%q" }}
+            - Name: X-OIDC-Subject
+              Value: "{{`{{ .claims.sub }}`}}"
+            - Name: X-OIDC-Email
+              Value: "{{`{{ .claims.email }}`}}"
+            - Name: X-OIDC-Name
+              Value: "{{`{{ .claims.name }}`}}"
+            - Name: X-OIDC-Preferred-Username
+              Value: "{{`{{ .claims.preferred_username }}`}}"
+            - Name: X-OIDC-Claims
+              Value: "{{`{{ .claims }}`}}"
+            - Name: X-OIDC-ID-Token
+              Value: "{{`{{ .idToken }}`}}"
+{{ end }}
 
     response-security:
       headers:
         contentTypeNosniff: true
         customResponseHeaders:
           Cache-Control: no-store
+          Permissions-Policy: camera=(), geolocation=(), microphone=()
           Referrer-Policy: no-referrer
+          X-Robots-Tag: noindex, nofollow
         frameDeny: true

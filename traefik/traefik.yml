@@ -7,6 +7,9 @@ entryPoints:
     address: ":8080"
     forwardedHeaders:
       insecure: false
+    http:
+      # Added in Traefik 3.7; SchemaStore's Traefik v2/v3 schemas do not include it yet.
+      aliasHeadersStrategy: reject
 
 providers:
   file:
@@ -15,6 +18,8 @@ providers:
 
 experimental:
   localPlugins:
+    oidc-provider-selector:
+      moduleName: github.com/sandrinodm/traefik-oidc-provider-selector
     traefik-oidc-auth:
       moduleName: github.com/sevensolutions/traefik-oidc-auth
 

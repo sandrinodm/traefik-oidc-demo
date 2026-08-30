@@ -2,13 +2,13 @@
   "name": "traefik-oidc-header-viewer",
   "version": "1.0.0",
   "private": true,
-  "description": "Single-container Traefik OIDC demo with an Express request inspector",
+  "description": "Traefik OIDC demo with an Express request inspector",
   "type": "module",
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "start": "node app/start.js",
+    "start": "node server.js",
     "test": "node --test"
   },
   "dependencies": {
