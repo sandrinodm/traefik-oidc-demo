@@ -16,6 +16,8 @@ import (
 
 const defaultTemplateFile = "/plugins-local/src/github.com/sandrinodm/traefik-oidc-provider-selector/page.html"
 
+const loginContinuationMode = "login-continuation"
+
 // Provider is an OIDC middleware choice exposed on the selector page.
 type Provider struct {
 	ID   string `json:"id,omitempty"`
@@ -24,9 +26,9 @@ type Provider struct {
 
 // Config configures the provider selector middleware.
 type Config struct {
-	CookieMaxAge          int        `json:"cookieMaxAge,omitempty"`
 	CookieName            string     `json:"cookieName,omitempty"`
 	CookieSecure          bool       `json:"cookieSecure,omitempty"`
+	Mode                  string     `json:"mode,omitempty"`
 	Providers             []Provider `json:"providers,omitempty"`
 	SessionCookiePrefixes []string   `json:"sessionCookiePrefixes,omitempty"`
 	TemplateFile          string     `json:"templateFile,omitempty"`
@@ -35,7 +37,6 @@ type Config struct {
 // CreateConfig returns safe defaults for a local Traefik plugin instance.
 func CreateConfig() *Config {
 	return &Config{
-		CookieMaxAge: 8 * 60 * 60,
 		CookieName:   "oidc_provider",
 		CookieSecure: true,
 		SessionCookiePrefixes: []string{
@@ -67,11 +68,18 @@ type pageData struct {
 	Title       string
 }
 
-// New constructs the Traefik middleware. It intentionally does not retain the
-// downstream handler: every request routed here must be answered fail-closed.
+// New constructs either the fail-closed provider selector or the post-login
+// continuation. The continuation is reached only after the OIDC middleware has
+// validated the provider-specific session that wraps it.
 func New(_ context.Context, _ http.Handler, config *Config, name string) (http.Handler, error) {
 	if config == nil {
 		return nil, fmt.Errorf("%s: config is required", name)
+	}
+	if config.Mode == loginContinuationMode {
+		return &loginContinuation{}, nil
+	}
+	if config.Mode != "" {
+		return nil, fmt.Errorf("%s: unsupported mode %q", name, config.Mode)
 	}
 	if err := validateConfig(*config); err != nil {
 		return nil, fmt.Errorf("%s: %w", name, err)
@@ -89,12 +97,16 @@ func New(_ context.Context, _ http.Handler, config *Config, name string) (http.H
 	return &selector{config: *config, styles: template.CSS(styles), templates: templates}, nil
 }
 
+type loginContinuation struct{}
+
+func (continuation *loginContinuation) ServeHTTP(w http.ResponseWriter, request *http.Request) {
+	setSecurityHeaders(w)
+	http.Redirect(w, request, safeReturnTo(request.URL.Query().Get("return_to")), http.StatusSeeOther)
+}
+
 func validateConfig(config Config) error {
 	if !validToken(config.CookieName) {
 		return fmt.Errorf("cookieName must contain only letters, digits, dots, underscores, or hyphens")
-	}
-	if config.CookieMaxAge <= 0 {
-		return fmt.Errorf("cookieMaxAge must be greater than zero")
 	}
 	if strings.TrimSpace(config.TemplateFile) == "" {
 		return fmt.Errorf("templateFile is required")
@@ -145,7 +157,7 @@ func (selector *selector) ServeHTTP(w http.ResponseWriter, request *http.Request
 	case request.Method == http.MethodGet && request.URL.Path == "/healthz":
 		selector.health(w)
 	case request.Method == http.MethodGet && request.URL.Path == "/login":
-		selector.chooseOrRedirect(w, request, safeReturnTo(request.URL.Query().Get("return_to")))
+		selector.chooseOrRedirect(w, request, safeReturnTo(request.URL.Query().Get("return_to")), true)
 	case request.Method == http.MethodPost && strings.HasPrefix(request.URL.Path, "/login/"):
 		selector.selectProvider(w, request)
 	case request.Method == http.MethodGet && request.URL.Path == "/logout":
@@ -153,7 +165,7 @@ func (selector *selector) ServeHTTP(w http.ResponseWriter, request *http.Request
 	case request.Method == http.MethodGet && request.URL.Path == "/signed-out":
 		selector.signedOut(w)
 	case request.Method == http.MethodGet || request.Method == http.MethodHead:
-		selector.chooseOrRedirect(w, request, safeReturnTo(request.URL.RequestURI()))
+		selector.chooseOrRedirect(w, request, safeReturnTo(request.URL.RequestURI()), false)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -177,7 +189,7 @@ func (selector *selector) health(w http.ResponseWriter) {
 	_ = json.NewEncoder(w).Encode(response)
 }
 
-func (selector *selector) chooseOrRedirect(w http.ResponseWriter, request *http.Request, returnTo string) {
+func (selector *selector) chooseOrRedirect(w http.ResponseWriter, request *http.Request, returnTo string, showSelector bool) {
 	switch len(selector.config.Providers) {
 	case 0:
 		selector.render(w, http.StatusServiceUnavailable, pageData{
@@ -186,9 +198,12 @@ func (selector *selector) chooseOrRedirect(w http.ResponseWriter, request *http.
 			Title:       "Sign-in unavailable",
 		})
 	case 1:
-		selector.setProviderCookie(w, selector.config.Providers[0].ID)
-		http.Redirect(w, request, returnTo, http.StatusFound)
+		http.Redirect(w, request, loginStartURL(selector.config.Providers[0].ID, returnTo), http.StatusFound)
 	default:
+		if !showSelector {
+			http.Redirect(w, request, selectorURL(returnTo), http.StatusFound)
+			return
+		}
 		providers := make([]providerView, 0, len(selector.config.Providers))
 		for _, item := range selector.config.Providers {
 			providers = append(providers, providerView{
@@ -225,8 +240,15 @@ func (selector *selector) selectProvider(w http.ResponseWriter, request *http.Re
 		return
 	}
 
-	selector.setProviderCookie(w, selected)
-	http.Redirect(w, request, safeReturnTo(request.FormValue("return_to")), http.StatusSeeOther)
+	http.Redirect(w, request, loginStartURL(selected, safeReturnTo(request.FormValue("return_to"))), http.StatusSeeOther)
+}
+
+func selectorURL(returnTo string) string {
+	return "/login?" + url.Values{"return_to": []string{returnTo}}.Encode()
+}
+
+func loginStartURL(providerID, returnTo string) string {
+	return "/login/" + providerID + "?" + url.Values{"return_to": []string{returnTo}}.Encode()
 }
 
 func crossOriginProviderSelection(request *http.Request) bool {
@@ -291,19 +313,6 @@ func (selector *selector) providerEnabled(id string) bool {
 		}
 	}
 	return false
-}
-
-func (selector *selector) setProviderCookie(w http.ResponseWriter, id string) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     selector.config.CookieName,
-		Value:    id,
-		Path:     "/",
-		Expires:  time.Now().Add(time.Duration(selector.config.CookieMaxAge) * time.Second),
-		MaxAge:   selector.config.CookieMaxAge,
-		HttpOnly: true,
-		Secure:   selector.config.CookieSecure,
-		SameSite: http.SameSiteLaxMode,
-	})
 }
 
 func safeReturnTo(value string) string {

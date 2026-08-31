@@ -7,7 +7,7 @@ http:
     public:
       entryPoints:
         - web
-      rule: Path(`/healthz`) || Path(`/login`) || PathPrefix(`/login/`) || Path(`/logout`) || Path(`/signed-out`)
+      rule: Path(`/healthz`) || Path(`/login`) || Path(`/logout`) || Path(`/signed-out`)
       priority: 1000
       service: selector-sink
       middlewares:
@@ -33,10 +33,25 @@ http:
         - oidc-provider-1
         - response-security
 
+    oidc-provider-1-login:
+      entryPoints:
+        - web
+      rule: Path(`/login/provider-1`)
+      priority: 800
+      service: express-inspector
+      middlewares:
+{{ if $forceHttps }}
+        - force-https-scheme
+{{ end }}
+        - strip-client-identity
+        - oidc-provider-1
+        - oidc-login-continuation
+        - response-security
+
     oidc-provider-1:
       entryPoints:
         - web
-      rule: 'PathPrefix(`/`) && HeaderRegexp(`Cookie`, `(^|;\s*)oidc_provider=provider-1(;|$)`)'
+      rule: 'PathPrefix(`/`) && HeaderRegexp(`Cookie`, `(^|;\s*)TraefikOidcAuth\.Provider1\.Session(\.(Chunks|[0-9]+))?=`)'
       priority: 200
       service: express-inspector
       middlewares:
@@ -63,10 +78,25 @@ http:
         - oidc-provider-2
         - response-security
 
+    oidc-provider-2-login:
+      entryPoints:
+        - web
+      rule: Path(`/login/provider-2`)
+      priority: 800
+      service: express-inspector
+      middlewares:
+{{ if $forceHttps }}
+        - force-https-scheme
+{{ end }}
+        - strip-client-identity
+        - oidc-provider-2
+        - oidc-login-continuation
+        - response-security
+
     oidc-provider-2:
       entryPoints:
         - web
-      rule: 'PathPrefix(`/`) && HeaderRegexp(`Cookie`, `(^|;\s*)oidc_provider=provider-2(;|$)`)'
+      rule: 'PathPrefix(`/`) && HeaderRegexp(`Cookie`, `(^|;\s*)TraefikOidcAuth\.Provider2\.Session(\.(Chunks|[0-9]+))?=`)'
       priority: 200
       service: express-inspector
       middlewares:
@@ -128,7 +158,6 @@ http:
     provider-selector:
       plugin:
         oidc-provider-selector:
-          cookieMaxAge: 28800
           cookieName: oidc_provider
           cookieSecure: {{ env "OIDC_COOKIE_SECURE" | default "true" }}
 {{ if or $provider1Enabled $provider2Enabled }}
@@ -148,6 +177,11 @@ http:
             - TraefikOidcAuth.Provider1.
             - TraefikOidcAuth.Provider2.
           templateFile: /plugins-local/src/github.com/sandrinodm/traefik-oidc-provider-selector/page.html
+
+    oidc-login-continuation:
+      plugin:
+        oidc-provider-selector:
+          mode: login-continuation
 
 {{ if $provider1Enabled }}
     oidc-provider-1:

@@ -59,7 +59,7 @@ func TestSafeReturnTo(t *testing.T) {
 
 func TestMultipleProvidersRenderChooser(t *testing.T) {
 	t.Parallel()
-	request := httptest.NewRequest(http.MethodGet, "/private?tab=one", nil)
+	request := httptest.NewRequest(http.MethodGet, "/login?return_to=%2Fprivate%3Ftab%3Done", nil)
 	response := httptest.NewRecorder()
 
 	testSelector(t, twoProviders).ServeHTTP(response, request)
@@ -75,6 +75,18 @@ func TestMultipleProvidersRenderChooser(t *testing.T) {
 	}
 }
 
+func TestMultipleProvidersRedirectRequestsToSelectorPage(t *testing.T) {
+	t.Parallel()
+	request := httptest.NewRequest(http.MethodGet, "/private?tab=one", nil)
+	response := httptest.NewRecorder()
+
+	testSelector(t, twoProviders).ServeHTTP(response, request)
+	result := response.Result()
+	if result.StatusCode != http.StatusFound || result.Header.Get("Location") != "/login?return_to=%2Fprivate%3Ftab%3Done" {
+		t.Fatalf("unexpected redirect: status=%d location=%q", result.StatusCode, result.Header.Get("Location"))
+	}
+}
+
 func TestSingleProviderRedirectsWithoutChooser(t *testing.T) {
 	t.Parallel()
 	request := httptest.NewRequest(http.MethodGet, "/private", nil)
@@ -82,12 +94,11 @@ func TestSingleProviderRedirectsWithoutChooser(t *testing.T) {
 
 	testSelector(t, twoProviders[:1]).ServeHTTP(response, request)
 	result := response.Result()
-	if result.StatusCode != http.StatusFound || result.Header.Get("Location") != "/private" {
+	if result.StatusCode != http.StatusFound || result.Header.Get("Location") != "/login/provider-1?return_to=%2Fprivate" {
 		t.Fatalf("unexpected redirect: status=%d location=%q", result.StatusCode, result.Header.Get("Location"))
 	}
-	cookies := result.Cookies()
-	if len(cookies) != 1 || cookies[0].Name != "oidc_provider" || cookies[0].Value != "provider-1" || !cookies[0].HttpOnly || cookies[0].SameSite != http.SameSiteLaxMode {
-		t.Fatalf("unexpected provider cookie: %#v", cookies)
+	if cookies := result.Cookies(); len(cookies) != 0 {
+		t.Fatalf("selection must be carried by the OIDC state, not a provider cookie: %#v", cookies)
 	}
 }
 
@@ -101,11 +112,11 @@ func TestProviderSelection(t *testing.T) {
 
 	testSelector(t, twoProviders).ServeHTTP(response, request)
 	result := response.Result()
-	if result.StatusCode != http.StatusSeeOther || result.Header.Get("Location") != "/private" {
+	if result.StatusCode != http.StatusSeeOther || result.Header.Get("Location") != "/login/provider-2?return_to=%2Fprivate" {
 		t.Fatalf("unexpected selection response: status=%d location=%q", result.StatusCode, result.Header.Get("Location"))
 	}
-	if cookies := result.Cookies(); len(cookies) != 1 || cookies[0].Value != "provider-2" {
-		t.Fatalf("unexpected provider cookie: %#v", cookies)
+	if cookies := result.Cookies(); len(cookies) != 0 {
+		t.Fatalf("selection must be carried by the OIDC state, not a provider cookie: %#v", cookies)
 	}
 }
 
@@ -121,8 +132,32 @@ func TestProviderSelectionAllowsBrowserSameOriginAcrossProxyScheme(t *testing.T)
 
 	testSelector(t, twoProviders).ServeHTTP(response, request)
 	result := response.Result()
-	if result.StatusCode != http.StatusSeeOther || result.Header.Get("Location") != "/private" {
+	if result.StatusCode != http.StatusSeeOther || result.Header.Get("Location") != "/login/provider-1?return_to=%2Fprivate" {
 		t.Fatalf("unexpected selection response: status=%d location=%q body=%q", result.StatusCode, result.Header.Get("Location"), response.Body.String())
+	}
+}
+
+func TestLoginContinuationReturnsToTheOriginalRequest(t *testing.T) {
+	t.Parallel()
+	config := &Config{Mode: loginContinuationMode}
+	next := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("login continuation forwarded after authentication")
+	})
+	handler, err := New(context.Background(), next, config, "test-continuation")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/login/provider-1?return_to=%2Fprivate%3Ftab%3Done", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	result := response.Result()
+	if result.StatusCode != http.StatusSeeOther || result.Header.Get("Location") != "/private?tab=one" {
+		t.Fatalf("unexpected continuation: status=%d location=%q", result.StatusCode, result.Header.Get("Location"))
+	}
+	if result.Header.Get("Cache-Control") != "no-store" {
+		t.Fatalf("continuation omitted security headers: %#v", result.Header)
 	}
 }
 

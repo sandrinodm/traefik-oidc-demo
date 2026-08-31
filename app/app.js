@@ -153,10 +153,10 @@ function page(request) {
       .topbar-actions { display: flex; align-items: center; gap: .7rem; }
       .environment { display: inline-flex; align-items: center; gap: .45rem; color: var(--muted); font-size: .76rem; }
       .environment::before { width: .42rem; height: .42rem; border-radius: 50%; background: var(--accent); content: ""; box-shadow: 0 0 0 3px var(--accent-soft); }
-      .logout-button { display: inline-flex; min-height: 2.25rem; align-items: center; justify-content: center; padding: .45rem .75rem; border: 1px solid var(--border-strong); border-radius: .4rem; background: var(--surface); color: var(--text); font-size: .76rem; font-weight: 650; text-decoration: none; transition: border-color 160ms ease, background 160ms ease, transform 160ms ease; }
-      .logout-button:hover { border-color: var(--text); background: var(--surface-strong); }
-      .logout-button:active { transform: translateY(1px); }
-      .logout-button:focus-visible, .tab:focus-visible, .jwt-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+      .topbar-link { display: inline-flex; min-height: 2.25rem; align-items: center; justify-content: center; padding: .45rem .75rem; border: 1px solid var(--border-strong); border-radius: .4rem; background: var(--surface); color: var(--text); font-size: .76rem; font-weight: 650; text-decoration: none; transition: border-color 160ms ease, background 160ms ease, transform 160ms ease; }
+      .topbar-link:hover { border-color: var(--text); background: var(--surface-strong); }
+      .topbar-link:active { transform: translateY(1px); }
+      .topbar-link:focus-visible, .tab:focus-visible, .jwt-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
       main { width: min(74rem, calc(100% - 3rem)); margin: 0 auto; padding: clamp(2.8rem, 6vw, 5.6rem) 0 6rem; }
       .page-header { display: grid; max-width: 48rem; gap: .75rem; margin-bottom: 2.7rem; }
       .eyebrow { display: flex; align-items: center; gap: .55rem; margin: 0; color: var(--accent-strong); font-size: .68rem; font-weight: 750; letter-spacing: .13em; text-transform: uppercase; }
@@ -233,7 +233,8 @@ function page(request) {
       </a>
       <div class="topbar-actions">
         <span class="environment">Authenticated</span>
-        <a class="logout-button" href="/logout">Logout</a>
+        <a class="topbar-link" href="/login">Switch provider</a>
+        <a class="topbar-link" href="/logout">Logout</a>
       </div>
     </div>
     <main id="overview">

@@ -41,7 +41,8 @@ test("the request page shows headers and cookies without executing their markup"
   assert.match(body, /id="request-panel"[^>]* hidden/);
   assert.match(body, /https:\/\/jwt\.io\/#debugger-io\?token=header\.payload\.signature/);
   assert.match(body, /target="_blank" rel="noopener noreferrer"/);
-  assert.match(body, /<a class="logout-button" href="\/logout">Logout<\/a>/);
+  assert.match(body, /<a class="topbar-link" href="\/login">Switch provider<\/a>/);
+  assert.match(body, /<a class="topbar-link" href="\/logout">Logout<\/a>/);
   assert.match(body, /person@example\.com/);
   assert.match(body, /preference/);
   assert.match(body, /&lt;img src=x onerror=alert\(1\)&gt;/);
